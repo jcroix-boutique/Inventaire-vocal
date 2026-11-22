@@ -141,7 +141,7 @@ function fournisseurActif() { return etat.actif; }
 const API_URL = 'https://script.google.com/macros/s/AKfycbz7twLRPvheqxcEOAgDV3jKmkArZJzEDmoL-ERMrsUh8H8NUgzE67opiJvahDuLUIsp/exec';
 (function () {
   const m = location.hash.match(/code=([^&]+)/);
-  if (m) { localStorage.setItem('inventaire-vocal-code', decodeURIComponent(m[1])); history.replaceState(null, '', location.pathname); }
+  if (m) { localStorage.setItem('inventaire-vocal-code', decodeURIComponent(m[1])); }  // le code reste dans l'adresse : l'icône « écran d'accueil » de l'iPhone le garde
 })();
 function codeAcces() { return localStorage.getItem('inventaire-vocal-code'); }
 // Appel au script Google (ou, hors Google, à un stockage local de test)
