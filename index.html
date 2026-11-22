@@ -140,7 +140,7 @@ function fournisseurActif() { return etat.actif; }
 // Adresse du script Google (API) et code d'accès (donné une seule fois dans le lien : …#code=XXXX)
 const API_URL = 'https://script.google.com/macros/s/AKfycbz7twLRPvheqxcEOAgDV3jKmkArZJzEDmoL-ERMrsUh8H8NUgzE67opiJvahDuLUIsp/exec';
 (function () {
-  const m = location.hash.match(/code=([^&]+)/);
+  const m = (location.hash + '&' + location.search).match(/code=([^&#]+)/);
   if (m) { localStorage.setItem('inventaire-vocal-code', decodeURIComponent(m[1])); }  // le code reste dans l'adresse : l'icône « écran d'accueil » de l'iPhone le garde
 })();
 function codeAcces() { return localStorage.getItem('inventaire-vocal-code'); }
@@ -154,7 +154,7 @@ function serveur(fn, ...args) {
     } else if (API_URL && codeAcces()) {
       fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ code: codeAcces(), action: fn, args: args }) })
         .then(r => r.json())
-        .then(r => r.ok ? ok(r.data) : ko(new Error(r.erreur)))
+        .then(r => { if (!r.ok && /Code d'accès incorrect/.test(r.erreur)) { localStorage.removeItem('inventaire-vocal-code'); demanderCode(); } return r.ok ? ok(r.data) : ko(new Error(r.erreur)); })
         .catch(ko);
     } else if (window.google && google.script && google.script.run) {
       google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[fn](...args);
@@ -653,7 +653,24 @@ function imprimer() {
 }
 document.getElementById('imprimer').onclick = imprimer;
 rendre();
-if (API_URL && !codeAcces()) info('Code d\'accès manquant : ouvre l\'appli avec le lien complet que je t\'ai donné.', false);
+function demanderCode() {
+  if (document.getElementById('boiteCode')) return;
+  const d = document.createElement('div');
+  d.id = 'boiteCode';
+  d.innerHTML = '<div style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:99;padding:20px">' +
+    '<div class="carte" style="max-width:360px;width:100%"><h2>Code d\'accès</h2>' +
+    '<p class="aide">Entre ton code une seule fois sur cet appareil.</p>' +
+    '<div class="ligne"><input type="text" id="champCode" autocapitalize="off" autocorrect="off" placeholder="Code"><button class="plein" id="validerCode">OK</button></div></div></div>';
+  document.body.appendChild(d);
+  document.getElementById('validerCode').onclick = () => {
+    const v = document.getElementById('champCode').value.trim();
+    if (!v) return;
+    localStorage.setItem('inventaire-vocal-code', v);
+    d.remove(); derniereErreur = false; info('Code enregistré.', true);
+    serveur('lireDonnees').catch(() => {});
+  };
+}
+if (API_URL && location.protocol !== 'file:' && !codeAcces()) demanderCode();
 serveur('lireDonnees').catch(() => {});
 </script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
