@@ -105,7 +105,7 @@
         <b>Commandes :</b><br>
         <code>fournisseur Dupont</code> change de fournisseur<br>
         <code>annuler</code> supprime la dernière ligne<br>
-        <code>stop</code> arrête le micro
+        <code>OK</code> arrête le micro (tout seul ou en fin de phrase)
       </div>
     </div>
   </section>
@@ -234,9 +234,9 @@ function versNombre(s) { return s == null ? NaN : parseFloat(String(s).replace('
 function analyser(phrase) {
   let t = phrase.trim().replace(/\s+/g, ' ');
   if (!t) return { type: 'erreur' };
-  const bas = t.toLowerCase().replace(/[.!?]+$/, '');
+  const bas = t.toLowerCase().replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
   if (/^(annuler|annule|supprimer|supprime|efface)( la)?( dernière| derniere)?( ligne)?$/.test(bas)) return { type: 'annuler' };
-  if (/^(stop|arrête|arrete|terminé|termine|fin)$/.test(bas)) return { type: 'stop' };
+  if (/^(ok|okay|o k|stop|arrête|arrete|terminé|termine|fin)$/.test(bas)) return { type: 'stop' };
   const mf = t.match(/^(?:fournisseur|fournisseurs|nouveau fournisseur)\s*:?\s+(.+)$/i);
   if (mf) return { type: 'fournisseur', nom: mf[1] };
 
@@ -258,7 +258,14 @@ function analyser(phrase) {
 
 /* ===================== Traitement ===================== */
 let dernierAjout = null;
+// « OK » (ou « stop ») à la fin d'une phrase : on enregistre la phrase puis on coupe le micro
+const MOT_FIN = /[\s,.;:!?-]*\b(ok|okay|o\.?\s?k\.?|stop)\s*[.!?]*\s*$/i;
 function traiter(phrase) {
+  if (MOT_FIN.test(phrase) && phrase.replace(MOT_FIN, '').trim()) {
+    traiter(phrase.replace(MOT_FIN, ''));
+    arreterMicro(); info('Micro arrêté.', true);
+    return;
+  }
   const r = analyser(phrase);
   if (r.type === 'stop') { arreterMicro(); info('Micro arrêté.', true); return; }
   if (r.type === 'fournisseur') { const n = ajouterFournisseur(r.nom); info('Fournisseur : ' + n, true); return; }
