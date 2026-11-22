@@ -108,7 +108,7 @@
         <code>12 tulipes jaunes à 1,50 €</code><br>
         <code>5 orchidées à 12 euros 90</code><br>
         <b>Commandes :</b><br>
-        <code>fournisseur Dupont</code> change de fournisseur<br>
+        <code>fournisseur Dupont</code> choisit un fournisseur de la liste<br>
         <code>annuler</code> supprime la dernière ligne<br>
         <code>OK</code> arrête le micro (tout seul ou en fin de phrase)
       </div>
@@ -190,6 +190,25 @@ function ajouterFournisseur(nom) {
   etat.actif = nom; etat.vue = nom; sauver(); rendre();
   serveur('ajouterFournisseur', nom).catch(() => {});
   return nom;
+}
+function sansAccents(t) { return String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+function distance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+// Retrouve le fournisseur existant le plus proche de ce qui a été dicté (fautes de reconnaissance tolérées)
+function trouverFournisseur(nom) {
+  const c = sansAccents(nom); if (!c) return null;
+  let meilleur = null, score = Infinity;
+  for (const f of etat.ordre) {
+    const x = sansAccents(f);
+    const dd = x === c ? 0 : (x.startsWith(c) || c.startsWith(x)) ? 0.5 : distance(x, c);
+    if (dd < score) { score = dd; meilleur = f; }
+  }
+  return score <= Math.max(1, Math.floor(c.length / 4)) ? meilleur : null;
 }
 function nettoyerNom(n) {
   n = (n || '').trim().replace(/[.!?]+$/, '');
@@ -275,7 +294,13 @@ function traiter(phrase) {
   }
   const r = analyser(phrase);
   if (r.type === 'stop') { arreterMicro(); info('Micro arrêté.', true); return; }
-  if (r.type === 'fournisseur') { const n = ajouterFournisseur(r.nom); info('Fournisseur : ' + n, true); return; }
+  if (r.type === 'fournisseur') {
+    // À la voix, on choisit seulement un fournisseur existant (pas de création par erreur)
+    const n = trouverFournisseur(r.nom);
+    if (n) { etat.actif = n; etat.vue = n; sauver(); rendre(); info('Fournisseur : ' + n, true); }
+    else info('Fournisseur « ' + nettoyerNom(r.nom) + ' » inconnu. Choisis-le dans la liste, ou ajoute-le avec le bouton « Ajouter ».', false);
+    return;
+  }
   if (r.type === 'annuler') {
     const f = fournisseurActif();
     if (f && etat.fournisseurs[f].length) {
