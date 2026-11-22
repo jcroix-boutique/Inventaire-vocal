@@ -48,6 +48,11 @@
   .suppr:hover { color:var(--rouge); }
   #recap td, #recap th { font-size:14px; }
   .vide { color:var(--gris); text-align:center; padding:30px; }
+  .titre-ligne { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
+  .petits-boutons button { font-size:13px; padding:6px 10px; }
+  details.histo { border:1px solid #e3e3e3; border-radius:8px; padding:8px 12px; margin-top:8px; }
+  details.histo summary { cursor:pointer; font-size:14px; }
+  details.histo table { margin-top:8px; font-size:14px; }
   .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
   #impression { display:none; }
   @media print {
@@ -158,7 +163,7 @@ function serveur(fn, ...args) {
           e => { enCours--; derniereErreur = true; majStatut(); info('Erreur de synchronisation : ' + (e && e.message || e), false); throw e; });
 }
 function appliquer(d) {
-  if (!d) return;
+  if (!d || !d.fournisseurs) return;
   const fs = {}; d.fournisseurs.forEach(f => fs[f] = []);
   d.lignes.forEach(l => { (fs[l.f] = fs[l.f] || []).push({ id: l.id, qte: l.qte, produit: l.produit, prix: l.prix }); });
   etat.fournisseurs = fs; etat.ordre = Object.keys(fs);
@@ -202,7 +207,9 @@ const SIMU = (() => {
     ajouterLigne: l => { const d = lire(); d.lignes.push(l); if (!d.fournisseurs.includes(l.f)) d.fournisseurs.push(l.f); return ecrire(d); },
     supprimerLigne: id => { const d = lire(); d.lignes = d.lignes.filter(l => l.id !== id); return ecrire(d); },
     modifierLigne: (id, c, v) => { const d = lire(); const l = d.lignes.find(l => l.id === id); if (l) l[c] = v; return ecrire(d); },
-    nouvelInventaire: () => { const d = lire(); d.lignes = []; return ecrire(d); }
+    nouvelInventaire: () => { const d = lire(); d.lignes = []; return ecrire(d); },
+    supprimerFournisseur: n => { const d = lire(); d.fournisseurs = d.fournisseurs.filter(f => f !== n); d.lignes = d.lignes.filter(l => l.f !== n); return ecrire(d); },
+    historique: n => ({ historique: [{ date: '2026-10-01 09:00', lignes: [{ qte: 5, produit: 'Roses', prix: 1.2 }] }] })
   };
 })();
 
@@ -363,14 +370,18 @@ function rendre() {
   }
   const zone = document.getElementById('vueFournisseur');
   zone.innerHTML = etat.vue === '__recap' ? vueRecap() : vueTable(etat.vue);
-  if (etat.vue !== '__recap') brancherEdition(etat.vue);
+  if (etat.vue !== '__recap') {
+    brancherEdition(etat.vue);
+    if (histoCache.f === etat.vue && histoCache.html) document.getElementById('zoneHisto').innerHTML = histoCache.html;
+  }
 }
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
 function vueTable(f) {
   if (!f) return '<div class="vide">Ajoute un fournisseur pour commencer.</div>';
   const lignes = etat.fournisseurs[f];
   let tq = 0, tt = 0;
-  let h = '<div class="fournisseur-titre">Fournisseur : ' + esc(f) + '</div>';
+  let h = '<div class="titre-ligne"><div class="fournisseur-titre">Fournisseur : ' + esc(f) + '</div>' +
+    '<div class="petits-boutons"><button id="btnHisto">📜 Historique</button> <button class="danger" id="btnSupprF">🗑️ Supprimer</button></div></div>';
   h += '<table><thead><tr><th class="num">Quantité</th><th>Produit</th><th class="num">Prix</th><th class="num">Total</th><th></th></tr></thead><tbody>';
   if (!lignes.length) h += '<tr><td colspan="5" class="vide">Aucun article. Dicte « 3 roses à 4 euros ».</td></tr>';
   lignes.forEach((l, i) => {
@@ -384,9 +395,25 @@ function vueTable(f) {
   });
   h += '</tbody><tfoot><tr><td class="num">' + tq + '</td><td>TOTAL</td><td></td><td class="num">' + euros(tt) + '</td><td></td></tr></tfoot></table>';
   h += '<div class="aide" style="margin-top:8px">Astuce : clique sur une case pour la corriger.</div>';
+  h += '<div id="zoneHisto"></div>';
   return h;
 }
 function brancherEdition(f) {
+  const bs = document.getElementById('btnSupprF');
+  bs.onclick = () => {
+    if (bs.dataset.confirme !== '1') {
+      bs.dataset.confirme = '1';
+      bs.textContent = etat.fournisseurs[f].length ? 'Confirmer (efface aussi ses ' + etat.fournisseurs[f].length + ' lignes) ?' : 'Confirmer la suppression ?';
+      setTimeout(() => { bs.dataset.confirme = ''; bs.textContent = '🗑️ Supprimer'; }, 4000);
+      return;
+    }
+    delete etat.fournisseurs[f]; etat.ordre = etat.ordre.filter(x => x !== f);
+    if (etat.actif === f) etat.actif = etat.ordre[0] || null;
+    etat.vue = etat.actif || '__recap'; sauver(); rendre();
+    info('Fournisseur « ' + f + ' » supprimé.', true);
+    serveur('supprimerFournisseur', f).catch(() => {});
+  };
+  document.getElementById('btnHisto').onclick = () => afficherHistorique(f);
   document.querySelectorAll('[data-suppr]').forEach(b => b.onclick = () => {
     const l = etat.fournisseurs[f].splice(+b.dataset.suppr, 1)[0]; rendre();
     if (l) serveur('supprimerLigne', l.id).catch(() => {});
@@ -406,6 +433,25 @@ function brancherEdition(f) {
       serveur('modifierLigne', l.id, champ, v).catch(() => {});
     };
   });
+}
+let histoCache = { f: null, html: '' };
+function afficherHistorique(f) {
+  const z = document.getElementById('zoneHisto');
+  histoCache = { f: f, html: '' };
+  z.innerHTML = '<div class="aide" style="margin-top:14px">Chargement de l\'historique…</div>';
+  serveur('historique', f).then(r => {
+    const liste = (r && r.historique) || [];
+    if (!liste.length) { z.innerHTML = '<div class="aide" style="margin-top:14px">Aucun inventaire archivé pour ' + esc(f) + ' pour l\'instant. L\'historique se remplit à chaque « Nouvel inventaire ».</div>'; return; }
+    let h = '<h2 style="margin-top:20px">📜 Historique de ' + esc(f) + '</h2>';
+    for (const a of liste) {
+      const tq = a.lignes.reduce((s, l) => s + l.qte, 0), tt = a.lignes.reduce((s, l) => s + l.qte * l.prix, 0);
+      h += '<details class="histo"><summary><b>' + esc(a.date) + '</b> · ' + a.lignes.length + ' articles · ' + tq + ' pièces · <b>' + euros(tt) + '</b></summary>' +
+        '<table><thead><tr><th class="num">Quantité</th><th>Produit</th><th class="num">Prix</th><th class="num">Total</th></tr></thead><tbody>' +
+        a.lignes.map(l => '<tr><td class="num">' + l.qte + '</td><td>' + esc(l.produit) + '</td><td class="num">' + euros(l.prix) + '</td><td class="num">' + euros(l.qte * l.prix) + '</td></tr>').join('') +
+        '</tbody></table></details>';
+    }
+    z.innerHTML = h; histoCache = { f: f, html: h };
+  }).catch(() => { z.innerHTML = '<div class="aide" style="margin-top:14px">Impossible de charger l\'historique.</div>'; });
 }
 function vueRecap(seulementAvecArticles) {
   const liste = seulementAvecArticles ? etat.ordre.filter(f => etat.fournisseurs[f].length) : etat.ordre;
