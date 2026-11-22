@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventaire vocal</title>
+<meta name="apple-mobile-web-app-title" content="Inventaire">
+<meta name="theme-color" content="#2f7d4f">
+<style>
+  :root { --vert:#2f7d4f; --vert-clair:#e8f3ec; --rouge:#c0392b; --gris:#666; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system, "Segoe UI", Roboto, sans-serif; margin:0; background:#f6f7f5; color:#222; }
+  header { background:var(--vert); color:#fff; padding:14px 24px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:22px; }
+  header .date { opacity:.85; font-size:14px; }
+  main { max-width:1100px; margin:0 auto; padding:20px; display:grid; grid-template-columns: 340px 1fr; gap:20px; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  .carte { background:#fff; border-radius:12px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  h2 { font-size:16px; margin:0 0 12px; color:var(--vert); }
+  label { font-size:13px; color:var(--gris); display:block; margin-bottom:4px; }
+  select, input[type=text], input[type=number] { font-size:16px; padding:8px 10px; border:1px solid #ccc; border-radius:8px; width:100%; }
+  .ligne { display:flex; gap:8px; margin-bottom:10px; }
+  button { font-size:15px; padding:9px 14px; border-radius:8px; border:1px solid var(--vert); background:#fff; color:var(--vert); cursor:pointer; }
+  button.plein { background:var(--vert); color:#fff; }
+  button.danger { border-color:var(--rouge); color:var(--rouge); }
+  button:disabled { opacity:.4; cursor:default; }
+  #micro { width:100%; height:120px; font-size:20px; border-radius:16px; background:var(--vert); color:#fff; border:none; margin:8px 0; }
+  #micro.ecoute { background:var(--rouge); animation:pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity:.75; } }
+  #entendu { min-height:44px; padding:10px; background:var(--vert-clair); border-radius:8px; font-size:15px; }
+  #message { min-height:22px; font-size:14px; margin-top:8px; }
+  #message.ok { color:var(--vert); } #message.err { color:var(--rouge); }
+  .aide { font-size:13px; color:var(--gris); line-height:1.5; }
+  .aide code { background:#f0f0f0; padding:1px 5px; border-radius:4px; }
+  .onglets { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .onglet { padding:6px 12px; border-radius:20px; border:1px solid #ccc; background:#fff; color:#333; font-size:14px; }
+  .onglet.actif { background:var(--vert); color:#fff; border-color:var(--vert); }
+  .fournisseur-titre { font-size:20px; font-weight:700; margin:4px 0 12px; }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th, td { padding:7px 8px; border-bottom:1px solid #eee; text-align:left; }
+  th { background:var(--vert-clair); font-size:13px; text-transform:uppercase; color:#345; }
+  td.num, th.num { text-align:right; }
+  td[contenteditable] { outline:none; } td[contenteditable]:focus { background:#fffbe6; }
+  tr.nouveau td { animation: flash 1.5s; }
+  @keyframes flash { from { background:#d9f2e1; } to { background:transparent; } }
+  tfoot td { font-weight:700; border-top:2px solid var(--vert); border-bottom:none; }
+  .suppr { border:none; color:#aaa; padding:2px 6px; font-size:16px; }
+  .suppr:hover { color:var(--rouge); }
+  #recap td, #recap th { font-size:14px; }
+  .vide { color:var(--gris); text-align:center; padding:30px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  #impression { display:none; }
+  @media print {
+    @page { size: A4; margin: 15mm; }
+    body { background:#fff; }
+    header, main { display:none !important; }
+    #impression { display:block; }
+    .page { page-break-after: always; break-after: page; }
+    .page:last-child { page-break-after: auto; break-after: auto; }
+    .page h1 { font-size:22px; margin:0 0 4px; color:#000; }
+    .page .sous { font-size:13px; color:#555; margin-bottom:14px; }
+    .page table { font-size:13px; }
+    .page th { background:#eee !important; color:#000; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .page td, .page th { border-bottom:1px solid #ccc; padding:5px 8px; }
+    .page tfoot td { border-top:2px solid #000; font-size:15px; }
+    .page tr { break-inside: avoid; }
+    .page thead { display: table-header-group; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌷 Inventaire vocal</h1>
+  <div class="date"><span id="dateJour"></span> · <span id="statut">☁️ Connexion…</span></div>
+</header>
+
+<main>
+  <section>
+    <div class="carte">
+      <h2>1. Fournisseur</h2>
+      <div class="ligne">
+        <select id="choixFournisseur"></select>
+      </div>
+      <div class="ligne">
+        <input type="text" id="nouveauFournisseur" placeholder="Nouveau fournisseur…">
+        <button id="ajouterFournisseur">Ajouter</button>
+      </div>
+
+      <h2 style="margin-top:18px">2. Dicter</h2>
+      <button id="micro">🎤 Appuyer pour dicter</button>
+      <div id="entendu">…</div>
+      <div id="message"></div>
+
+      <h2 style="margin-top:18px">Ou taper / dicter au clavier</h2>
+      <div class="ligne">
+        <input type="text" id="saisie" placeholder="3 roses à 4 euros">
+        <button class="plein" id="valider">OK</button>
+      </div>
+
+      <div class="aide">
+        <b>Exemples :</b><br>
+        <code>3 roses à 4 euros</code><br>
+        <code>12 tulipes jaunes à 1,50 €</code><br>
+        <code>5 orchidées à 12 euros 90</code><br>
+        <b>Commandes :</b><br>
+        <code>fournisseur Dupont</code> change de fournisseur<br>
+        <code>annuler</code> supprime la dernière ligne<br>
+        <code>stop</code> arrête le micro
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="carte">
+      <div class="onglets" id="onglets"></div>
+      <div id="vueFournisseur"></div>
+      <div class="actions">
+        <button class="plein" id="exporter">⬇️ Exporter en Excel</button>
+        <button class="plein" id="imprimer">🖨️ Imprimer tout</button>
+        <button class="danger" id="toutEffacer">Nouvel inventaire (archiver et vider)</button>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="impression"></div>
+
+<script>
+/* ===================== Données (synchronisées avec Google Sheets) ===================== */
+const PREFS = 'inventaire-vocal-prefs';
+let etat = { fournisseurs: {}, ordre: [], actif: null, vue: null };
+try { const p = JSON.parse(localStorage.getItem(PREFS)) || {}; etat.actif = p.actif || null; etat.vue = p.vue || null; } catch(e) {}
+function sauver() { localStorage.setItem(PREFS, JSON.stringify({ actif: etat.actif, vue: etat.vue })); }
+function fournisseurActif() { return etat.actif; }
+
+// Adresse du script Google (API) et code d'accès (donné une seule fois dans le lien : …#code=XXXX)
+const API_URL = 'https://script.google.com/macros/s/AKfycbz7twLRPvheqxcEOAgDV3jKmkArZJzEDmoL-ERMrsUh8H8NUgzE67opiJvahDuLUIsp/exec';
+(function () {
+  const m = location.hash.match(/code=([^&]+)/);
+  if (m) { localStorage.setItem('inventaire-vocal-code', decodeURIComponent(m[1])); history.replaceState(null, '', location.pathname); }
+})();
+function codeAcces() { return localStorage.getItem('inventaire-vocal-code'); }
+// Appel au script Google (ou, hors Google, à un stockage local de test)
+let enCours = 0, derniereErreur = false;
+function serveur(fn, ...args) {
+  enCours++; majStatut();
+  return new Promise((ok, ko) => {
+    if (API_URL && codeAcces()) {
+      fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ code: codeAcces(), action: fn, args: args }) })
+        .then(r => r.json())
+        .then(r => r.ok ? ok(r.data) : ko(new Error(r.erreur)))
+        .catch(ko);
+    } else if (window.google && google.script && google.script.run) {
+      google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[fn](...args);
+    } else {
+      setTimeout(() => { try { ok(SIMU[fn](...args)); } catch(e) { ko(e); } }, 50);
+    }
+  }).then(d => { enCours--; derniereErreur = false; if (!enCours) appliquer(d); majStatut(); return d; },
+          e => { enCours--; derniereErreur = true; majStatut(); info('Erreur de synchronisation : ' + (e && e.message || e), false); throw e; });
+}
+function appliquer(d) {
+  if (!d) return;
+  const fs = {}; d.fournisseurs.forEach(f => fs[f] = []);
+  d.lignes.forEach(l => { (fs[l.f] = fs[l.f] || []).push({ id: l.id, qte: l.qte, produit: l.produit, prix: l.prix }); });
+  etat.fournisseurs = fs; etat.ordre = Object.keys(fs);
+  if (etat.actif && !fs[etat.actif]) etat.actif = null;
+  if (!etat.actif && etat.ordre.length) etat.actif = etat.ordre[etat.ordre.length - 1];
+  rendre();
+}
+function majStatut() {
+  const el = document.getElementById('statut');
+  if (!el) return;
+  el.textContent = enCours ? '⏳ Enregistrement…' : derniereErreur ? '⚠️ Non synchronisé' : '☁️ Synchronisé';
+}
+function rafraichir() { if (!enCours && !document.hidden && !edition) serveur('lireDonnees').catch(() => {}); }
+let edition = false;
+setInterval(rafraichir, 8000);
+document.addEventListener('visibilitychange', rafraichir);
+
+function ajouterFournisseur(nom) {
+  nom = nettoyerNom(nom);
+  if (!nom) return null;
+  const existant = etat.ordre.find(f => f.toLowerCase() === nom.toLowerCase());
+  if (existant) { etat.actif = existant; etat.vue = existant; sauver(); rendre(); return existant; }
+  etat.fournisseurs[nom] = []; etat.ordre.push(nom);
+  etat.actif = nom; etat.vue = nom; sauver(); rendre();
+  serveur('ajouterFournisseur', nom).catch(() => {});
+  return nom;
+}
+function nettoyerNom(n) {
+  n = (n || '').trim().replace(/[.!?]+$/, '');
+  return n ? n.charAt(0).toUpperCase() + n.slice(1) : '';
+}
+
+/* Simulateur utilisé seulement quand la page est ouverte hors de Google (tests) */
+const SIMU = (() => {
+  const K = 'inventaire-vocal-simu';
+  const lire = () => JSON.parse(localStorage.getItem(K) || '{"fournisseurs":[],"lignes":[]}');
+  const ecrire = d => (localStorage.setItem(K, JSON.stringify(d)), d);
+  return {
+    lireDonnees: () => lire(),
+    ajouterFournisseur: n => { const d = lire(); if (!d.fournisseurs.includes(n)) d.fournisseurs.push(n); return ecrire(d); },
+    ajouterLigne: l => { const d = lire(); d.lignes.push(l); if (!d.fournisseurs.includes(l.f)) d.fournisseurs.push(l.f); return ecrire(d); },
+    supprimerLigne: id => { const d = lire(); d.lignes = d.lignes.filter(l => l.id !== id); return ecrire(d); },
+    modifierLigne: (id, c, v) => { const d = lire(); const l = d.lignes.find(l => l.id === id); if (l) l[c] = v; return ecrire(d); },
+    nouvelInventaire: () => { const d = lire(); d.lignes = []; return ecrire(d); }
+  };
+})();
+
+/* ===================== Analyse des phrases ===================== */
+const NOMBRES = {
+  'zéro':0,'un':1,'une':1,'deux':2,'trois':3,'quatre':4,'cinq':5,'six':6,'sept':7,'huit':8,'neuf':9,'dix':10,
+  'onze':11,'douze':12,'treize':13,'quatorze':14,'quinze':15,'seize':16,'vingt':20,'trente':30,'quarante':40,
+  'cinquante':50,'soixante':60,'cent':100
+};
+// Convertit "vingt-cinq", "soixante dix", "cent cinquante" ... en chiffres dans un texte
+function motsEnChiffres(txt) {
+  const motif = new RegExp('\\b((?:' + Object.keys(NOMBRES).join('|') + ')(?:[\\s-]+(?:et[\\s-]+)?(?:' + Object.keys(NOMBRES).join('|') + '))*)\\b', 'gi');
+  return txt.replace(motif, (m) => {
+    const parts = m.toLowerCase().split(/[\s-]+/).filter(p => p !== 'et');
+    let total = 0, courant = 0;
+    for (const p of parts) {
+      const v = NOMBRES[p];
+      if (v === 100) { courant = (courant || 1) * 100; }
+      else if (v === 20 && courant === 4) { courant = 80; } // quatre-vingt
+      else courant += v;
+    }
+    total += courant;
+    return String(total);
+  });
+}
+function versNombre(s) { return s == null ? NaN : parseFloat(String(s).replace(',', '.')); }
+
+// Renvoie {type:'article', qte, produit, prix} | {type:'fournisseur', nom} | {type:'annuler'} | {type:'stop'} | {type:'erreur'}
+function analyser(phrase) {
+  let t = phrase.trim().replace(/\s+/g, ' ');
+  if (!t) return { type: 'erreur' };
+  const bas = t.toLowerCase().replace(/[.!?]+$/, '');
+  if (/^(annuler|annule|supprimer|supprime|efface)( la)?( dernière| derniere)?( ligne)?$/.test(bas)) return { type: 'annuler' };
+  if (/^(stop|arrête|arrete|terminé|termine|fin)$/.test(bas)) return { type: 'stop' };
+  const mf = t.match(/^(?:fournisseur|fournisseurs|nouveau fournisseur)\s*:?\s+(.+)$/i);
+  if (mf) return { type: 'fournisseur', nom: mf[1] };
+
+  t = motsEnChiffres(t);
+  t = t.replace(/(\d)\s*€\s*(\d{1,2})\b/g, '$1,$2')          // 4€50 -> 4,50
+       .replace(/(\d+)\s*euros?\s*(?:et\s*)?(\d{1,2})(?:\s*centimes?)?\b/gi, '$1,$2') // 4 euros 50 -> 4,50
+       .replace(/(\d+)\s*centimes?/gi, (m, c) => '0,' + c.padStart(2, '0'));
+
+  // quantité  produit  (à|a|au prix de|pour|@)  prix  (€|euros)?  (pièce|l'unité)?
+  const re = /^(\d+(?:[.,]\d+)?)\s+(.+?)\s+(?:à|a|au prix de|à l'unité de|pour|@)\s+(\d+(?:[.,]\d+)?)\s*(?:€|euros?|eur)?(?:\s*(?:la|l'|par)\s*(?:pièce|piece|unité|unite))?\s*[.!]?$/i;
+  const m = t.match(re);
+  if (!m) return { type: 'erreur' };
+  const qte = versNombre(m[1]);
+  const prix = versNombre(m[3]);
+  const produit = nettoyerNom(m[2].replace(/^(de |d')/i, ''));
+  if (!isFinite(qte) || !isFinite(prix) || !produit) return { type: 'erreur' };
+  return { type: 'article', qte, produit, prix };
+}
+
+/* ===================== Traitement ===================== */
+let dernierAjout = null;
+function traiter(phrase) {
+  const r = analyser(phrase);
+  if (r.type === 'stop') { arreterMicro(); info('Micro arrêté.', true); return; }
+  if (r.type === 'fournisseur') { const n = ajouterFournisseur(r.nom); info('Fournisseur : ' + n, true); return; }
+  if (r.type === 'annuler') {
+    const f = fournisseurActif();
+    if (f && etat.fournisseurs[f].length) {
+      const s = etat.fournisseurs[f].pop(); rendre();
+      serveur('supprimerLigne', s.id).catch(() => {});
+      info('Supprimé : ' + s.qte + ' ' + s.produit, true);
+    } else info('Rien à annuler.', false);
+    return;
+  }
+  if (r.type === 'erreur') { info('Je n\'ai pas compris. Dis par exemple « 3 roses à 4 euros ».', false); return; }
+  if (!fournisseurActif()) { info('Choisis d\'abord un fournisseur (ou dis « fournisseur Dupont »).', false); return; }
+  const f = fournisseurActif();
+  const article = { qte: r.qte, produit: r.produit, prix: r.prix, id: Date.now() + '-' + Math.random().toString(36).slice(2, 7) };
+  etat.fournisseurs[f].push(article);
+  etat.vue = f;
+  dernierAjout = article.id;
+  sauver(); rendre();
+  serveur('ajouterLigne', { id: article.id, f: f, qte: article.qte, produit: article.produit, prix: article.prix }).catch(() => {});
+  info('✓ ' + article.qte + ' × ' + article.produit + ' à ' + euros(article.prix) + ' = ' + euros(article.qte * article.prix), true);
+}
+function info(txt, ok) { const m = document.getElementById('message'); m.textContent = txt; m.className = ok ? 'ok' : 'err'; }
+function euros(v) { return v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }); }
+
+/* ===================== Reconnaissance vocale ===================== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let reco = null, ecoute = false;
+const btnMicro = document.getElementById('micro');
+if (!SR) {
+  btnMicro.disabled = true;
+  btnMicro.textContent = '🎤 Utilise le micro du clavier dans la case ci-dessous';
+} else {
+  reco = new SR();
+  reco.lang = 'fr-FR';
+  reco.continuous = true;
+  reco.interimResults = true;
+  reco.onresult = (e) => {
+    aEntendu = true;
+    let provisoire = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      if (res.isFinal) { const txt = res[0].transcript; document.getElementById('entendu').textContent = '« ' + txt.trim() + ' »'; traiter(txt); }
+      else provisoire += res[0].transcript;
+    }
+    if (provisoire) document.getElementById('entendu').textContent = provisoire + '…';
+  };
+  reco.onend = () => { if (ecoute) { try { reco.start(); } catch(e) {} } else majMicro(); };
+  reco.onerror = (e) => {
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      ecoute = false; majMicro();
+      info('Le micro de la page n\'est pas disponible ici. Utilise le micro du clavier dans la case « Ou taper » (sur Mac : touche 🎤 ou Fn deux fois).', false);
+      document.getElementById('saisie').focus();
+    }
+  };
+  btnMicro.onclick = () => { ecoute ? arreterMicro() : demarrerMicro(); };
+}
+let minuteurMicro = null, aEntendu = false;
+function demarrerMicro() {
+  ecoute = true; aEntendu = false;
+  try { reco.start(); } catch(e) {}
+  majMicro();
+  clearTimeout(minuteurMicro);
+  minuteurMicro = setTimeout(() => {
+    if (ecoute && !aEntendu) {
+      arreterMicro();
+      info('Le micro de la page ne reçoit rien ici. Clique dans la case « Ou taper » et utilise la dictée du clavier (Mac : touche 🎤 ou Fn deux fois ; téléphone : micro du clavier). La ligne s\'enregistre toute seule.', false);
+      document.getElementById('saisie').focus();
+    }
+  }, 8000);
+}
+function arreterMicro() { ecoute = false; if (reco) reco.stop(); majMicro(); }
+function majMicro() {
+  btnMicro.classList.toggle('ecoute', ecoute);
+  btnMicro.textContent = ecoute ? '🔴 J\'écoute… (appuyer pour arrêter)' : '🎤 Appuyer pour dicter';
+}
+
+/* ===================== Affichage ===================== */
+function rendre() {
+  const sel = document.getElementById('choixFournisseur');
+  sel.innerHTML = etat.ordre.length ? '' : '<option value="">— Aucun fournisseur —</option>';
+  for (const f of etat.ordre) { const o = document.createElement('option'); o.value = f; o.textContent = f; o.selected = f === etat.actif; sel.appendChild(o); }
+
+  const onglets = document.getElementById('onglets');
+  onglets.innerHTML = '';
+  const vues = [...etat.ordre, '__recap'];
+  if (!etat.vue || !vues.includes(etat.vue)) etat.vue = etat.ordre[0] || '__recap';
+  for (const v of vues) {
+    const b = document.createElement('button');
+    b.className = 'onglet' + (v === etat.vue ? ' actif' : '');
+    b.textContent = v === '__recap' ? '📊 Récapitulatif' : v + ' (' + etat.fournisseurs[v].length + ')';
+    b.onclick = () => { etat.vue = v; if (v !== '__recap') etat.actif = v; sauver(); rendre(); };
+    onglets.appendChild(b);
+  }
+  const zone = document.getElementById('vueFournisseur');
+  zone.innerHTML = etat.vue === '__recap' ? vueRecap() : vueTable(etat.vue);
+  if (etat.vue !== '__recap') brancherEdition(etat.vue);
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+function vueTable(f) {
+  if (!f) return '<div class="vide">Ajoute un fournisseur pour commencer.</div>';
+  const lignes = etat.fournisseurs[f];
+  let tq = 0, tt = 0;
+  let h = '<div class="fournisseur-titre">Fournisseur : ' + esc(f) + '</div>';
+  h += '<table><thead><tr><th class="num">Quantité</th><th>Produit</th><th class="num">Prix</th><th class="num">Total</th><th></th></tr></thead><tbody>';
+  if (!lignes.length) h += '<tr><td colspan="5" class="vide">Aucun article. Dicte « 3 roses à 4 euros ».</td></tr>';
+  lignes.forEach((l, i) => {
+    tq += l.qte; tt += l.qte * l.prix;
+    h += '<tr' + (l.id === dernierAjout ? ' class="nouveau"' : '') + ' data-i="' + i + '">' +
+      '<td class="num" contenteditable data-champ="qte">' + l.qte + '</td>' +
+      '<td contenteditable data-champ="produit">' + esc(l.produit) + '</td>' +
+      '<td class="num" contenteditable data-champ="prix">' + l.prix.toFixed(2).replace('.', ',') + '</td>' +
+      '<td class="num">' + euros(l.qte * l.prix) + '</td>' +
+      '<td><button class="suppr" title="Supprimer" data-suppr="' + i + '">✕</button></td></tr>';
+  });
+  h += '</tbody><tfoot><tr><td class="num">' + tq + '</td><td>TOTAL</td><td></td><td class="num">' + euros(tt) + '</td><td></td></tr></tfoot></table>';
+  h += '<div class="aide" style="margin-top:8px">Astuce : clique sur une case pour la corriger.</div>';
+  return h;
+}
+function brancherEdition(f) {
+  document.querySelectorAll('[data-suppr]').forEach(b => b.onclick = () => {
+    const l = etat.fournisseurs[f].splice(+b.dataset.suppr, 1)[0]; rendre();
+    if (l) serveur('supprimerLigne', l.id).catch(() => {});
+  });
+  document.querySelectorAll('td[contenteditable]').forEach(td => {
+    td.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); td.blur(); } };
+    td.onfocus = () => { edition = true; };
+    td.onblur = () => {
+      edition = false;
+      const i = +td.parentElement.dataset.i, champ = td.dataset.champ, l = etat.fournisseurs[f][i];
+      if (!l) return;
+      let v;
+      if (champ === 'produit') { v = nettoyerNom(td.textContent); if (!v) return rendre(); }
+      else { v = versNombre(td.textContent.replace(/[€\s]/g, '')); if (!isFinite(v)) return rendre(); }
+      if (l[champ] === v) return rendre();
+      l[champ] = v; rendre();
+      serveur('modifierLigne', l.id, champ, v).catch(() => {});
+    };
+  });
+}
+function vueRecap(seulementAvecArticles) {
+  const liste = seulementAvecArticles ? etat.ordre.filter(f => etat.fournisseurs[f].length) : etat.ordre;
+  if (!liste.length) return '<div class="vide">Aucun fournisseur pour l\'instant.</div>';
+  let h = '<div class="fournisseur-titre">Récapitulatif par fournisseur</div><table id="recap"><thead><tr><th>Fournisseur</th><th class="num">Articles</th><th class="num">Quantité</th><th class="num">Montant</th></tr></thead><tbody>';
+  let gq = 0, gt = 0, gn = 0;
+  for (const f of liste) {
+    const ls = etat.fournisseurs[f];
+    const q = ls.reduce((s, l) => s + l.qte, 0), t = ls.reduce((s, l) => s + l.qte * l.prix, 0);
+    gq += q; gt += t; gn += ls.length;
+    h += '<tr><td>' + esc(f) + '</td><td class="num">' + ls.length + '</td><td class="num">' + q + '</td><td class="num">' + euros(t) + '</td></tr>';
+  }
+  h += '</tbody><tfoot><tr><td>TOTAL GÉNÉRAL</td><td class="num">' + gn + '</td><td class="num">' + gq + '</td><td class="num">' + euros(gt) + '</td></tr></tfoot></table>';
+  return h;
+}
+
+/* ===================== Export Excel ===================== */
+function nomFeuille(nom, pris) {
+  let n = nom.replace(/[\[\]\:\*\?\/\\]/g, ' ').trim().slice(0, 28) || 'Fournisseur';
+  let base = n, k = 2;
+  while (pris.has(n.toLowerCase()) || n.toLowerCase() === 'récapitulatif') n = base.slice(0, 26) + ' ' + (k++);
+  pris.add(n.toLowerCase());
+  return n;
+}
+async function exporter() {
+  const avecArticles = etat.ordre.filter(f => etat.fournisseurs[f].length);
+  if (!avecArticles.length) { info('Rien à exporter.', false); return; }
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Inventaire vocal';
+  const dateTxt = new Date().toLocaleDateString('fr-FR');
+  const vert = 'FF2F7D4F', vertClair = 'FFE8F3EC';
+  const bord = { top: { style: 'thin', color: { argb: 'FFCCCCCC' } }, bottom: { style: 'thin', color: { argb: 'FFCCCCCC' } } };
+  const fmtEuro = '#,##0.00 "€"';
+  const pris = new Set();
+  const refs = [];
+
+  for (const f of avecArticles) {
+    const nomF = nomFeuille(f, pris);
+    const ws = wb.addWorksheet(nomF, { pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+    ws.columns = [{ width: 12 }, { width: 40 }, { width: 14 }, { width: 16 }];
+    ws.mergeCells('A1:D1');
+    ws.getCell('A1').value = 'Fournisseur : ' + f;
+    ws.getCell('A1').font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+    ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: vert } };
+    ws.getCell('A1').alignment = { vertical: 'middle' };
+    ws.getRow(1).height = 28;
+    ws.mergeCells('A2:D2');
+    ws.getCell('A2').value = 'Inventaire du ' + dateTxt;
+    ws.getCell('A2').font = { italic: true, color: { argb: 'FF666666' } };
+    const entete = ws.getRow(4);
+    entete.values = ['Quantité', 'Produit', 'Prix', 'Total'];
+    entete.eachCell(c => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: vertClair } }; c.border = bord; });
+    ws.getCell('A4').alignment = ws.getCell('C4').alignment = ws.getCell('D4').alignment = { horizontal: 'right' };
+
+    const debut = 5;
+    const lignes = etat.fournisseurs[f];
+    lignes.forEach((l, i) => {
+      const r = debut + i;
+      ws.getCell('A' + r).value = l.qte;
+      ws.getCell('B' + r).value = l.produit;
+      ws.getCell('C' + r).value = l.prix;
+      ws.getCell('C' + r).numFmt = fmtEuro;
+      ws.getCell('D' + r).value = { formula: 'A' + r + '*C' + r, result: l.qte * l.prix };
+      ws.getCell('D' + r).numFmt = fmtEuro;
+      ['A','B','C','D'].forEach(c => ws.getCell(c + r).border = bord);
+    });
+    const fin = debut + Math.max(lignes.length, 1) - 1;
+    const rt = fin + 2;
+    const tq = lignes.reduce((s, l) => s + l.qte, 0), tt = lignes.reduce((s, l) => s + l.qte * l.prix, 0);
+    ws.getCell('A' + rt).value = { formula: 'SUM(A' + debut + ':A' + fin + ')', result: tq };
+    ws.getCell('B' + rt).value = 'TOTAL';
+    ws.getCell('D' + rt).value = { formula: 'SUM(D' + debut + ':D' + fin + ')', result: tt };
+    ws.getCell('D' + rt).numFmt = fmtEuro;
+    ['A','B','C','D'].forEach(c => {
+      const cell = ws.getCell(c + rt);
+      cell.font = { bold: true, size: 13 };
+      cell.border = { top: { style: 'medium', color: { argb: vert } } };
+    });
+    refs.push({ f, feuille: nomF, ligneTotal: rt, n: lignes.length, debut, fin, tq, tt });
+  }
+
+  // Feuille récapitulative (en dernier)
+  const recap = wb.addWorksheet('Récapitulatif', { pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+  recap.columns = [{ width: 32 }, { width: 12 }, { width: 12 }, { width: 18 }];
+  recap.mergeCells('A1:D1');
+  recap.getCell('A1').value = 'Récapitulatif de l\'inventaire du ' + dateTxt;
+  recap.getCell('A1').font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+  recap.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: vert } };
+  recap.getRow(1).height = 28;
+  const eR = recap.getRow(3);
+  eR.values = ['Fournisseur', 'Articles', 'Quantité', 'Montant'];
+  eR.eachCell(c => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: vertClair } }; c.border = bord; });
+  refs.forEach((x, i) => {
+    const r = 4 + i, q = "'" + x.feuille.replace(/'/g, "''") + "'!";
+    recap.getCell('A' + r).value = { text: x.f, hyperlink: '#' + q + 'A1' };
+    recap.getCell('A' + r).font = { color: { argb: 'FF1F5FAD' }, underline: true };
+    recap.getCell('B' + r).value = { formula: 'COUNTA(' + q + 'B' + x.debut + ':B' + x.fin + ')', result: x.n };
+    recap.getCell('C' + r).value = { formula: q + 'A' + x.ligneTotal, result: x.tq };
+    recap.getCell('D' + r).value = { formula: q + 'D' + x.ligneTotal, result: x.tt };
+    recap.getCell('D' + r).numFmt = fmtEuro;
+    ['A','B','C','D'].forEach(c => recap.getCell(c + r).border = bord);
+  });
+  const rf = 4 + refs.length + 1, l1 = 4, l2 = 3 + refs.length;
+  recap.getCell('A' + rf).value = 'TOTAL GÉNÉRAL';
+  recap.getCell('B' + rf).value = { formula: 'SUM(B' + l1 + ':B' + l2 + ')', result: refs.reduce((s, x) => s + x.n, 0) };
+  recap.getCell('C' + rf).value = { formula: 'SUM(C' + l1 + ':C' + l2 + ')', result: refs.reduce((s, x) => s + x.tq, 0) };
+  recap.getCell('D' + rf).value = { formula: 'SUM(D' + l1 + ':D' + l2 + ')', result: refs.reduce((s, x) => s + x.tt, 0) };
+  recap.getCell('D' + rf).numFmt = fmtEuro;
+  ['A','B','C','D'].forEach(c => { const cell = recap.getCell(c + rf); cell.font = { bold: true, size: 13 }; cell.border = { top: { style: 'medium', color: { argb: vert } } }; });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  const d = new Date();
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Inventaire ' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + '.xlsx';
+  document.body.appendChild(a); a.click(); a.remove();
+  info('Fichier Excel téléchargé.', true);
+}
+
+/* ===================== Boutons ===================== */
+document.getElementById('dateJour').textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+document.getElementById('choixFournisseur').onchange = (e) => { etat.actif = e.target.value; etat.vue = e.target.value; sauver(); rendre(); };
+document.getElementById('ajouterFournisseur').onclick = () => { const i = document.getElementById('nouveauFournisseur'); if (ajouterFournisseur(i.value)) i.value = ''; };
+document.getElementById('nouveauFournisseur').onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('ajouterFournisseur').click(); };
+document.getElementById('valider').onclick = () => { const i = document.getElementById('saisie'); if (i.value.trim()) { document.getElementById('entendu').textContent = '« ' + i.value.trim() + ' »'; traiter(i.value); i.value = ''; } };
+document.getElementById('saisie').onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('valider').click(); };
+// Dictée au clavier (micro du téléphone ou dictée du Mac) : validation automatique après une courte pause
+let minuteurSaisie = null;
+document.getElementById('saisie').addEventListener('input', () => {
+  clearTimeout(minuteurSaisie);
+  minuteurSaisie = setTimeout(() => {
+    const i = document.getElementById('saisie');
+    const r = analyser(i.value);
+    if (r.type !== 'erreur') document.getElementById('valider').click();
+  }, 1500);
+});
+document.getElementById('exporter').onclick = () => exporter().catch(err => info('Erreur export : ' + err.message, false));
+document.getElementById('toutEffacer').onclick = () => {
+  if (!etat.ordre.length) return;
+  if (document.getElementById('toutEffacer').dataset.confirme !== '1') {
+    const b = document.getElementById('toutEffacer'); b.dataset.confirme = '1'; b.textContent = 'Cliquer encore pour confirmer';
+    setTimeout(() => { b.dataset.confirme = ''; b.textContent = 'Nouvel inventaire (archiver et vider)'; }, 4000);
+    return;
+  }
+  for (const f of etat.ordre) etat.fournisseurs[f] = [];
+  rendre();
+  serveur('nouvelInventaire').then(() => info('Inventaire archivé dans le Google Sheets, nouvelle saisie prête.', true)).catch(() => {});
+};
+
+/* ===================== Impression ===================== */
+function imprimer() {
+  const avecArticles = etat.ordre.filter(f => etat.fournisseurs[f].length);
+  if (!avecArticles.length) { info('Rien à imprimer.', false); return; }
+  const dateTxt = new Date().toLocaleDateString('fr-FR');
+  let h = '';
+  for (const f of avecArticles) {
+    const ls = etat.fournisseurs[f];
+    let tq = 0, tt = 0;
+    h += '<div class="page"><h1>Fournisseur : ' + esc(f) + '</h1><div class="sous">Inventaire du ' + dateTxt + '</div>';
+    h += '<table><thead><tr><th class="num">Quantité</th><th>Produit</th><th class="num">Prix</th><th class="num">Total</th></tr></thead><tbody>';
+    if (!ls.length) h += '<tr><td colspan="4">Aucun article</td></tr>';
+    for (const l of ls) {
+      tq += l.qte; tt += l.qte * l.prix;
+      h += '<tr><td class="num">' + l.qte + '</td><td>' + esc(l.produit) + '</td><td class="num">' + euros(l.prix) + '</td><td class="num">' + euros(l.qte * l.prix) + '</td></tr>';
+    }
+    h += '</tbody><tfoot><tr><td class="num">' + tq + '</td><td>TOTAL</td><td></td><td class="num">' + euros(tt) + '</td></tr></tfoot></table></div>';
+  }
+  h += '<div class="page"><h1>Récapitulatif</h1><div class="sous">Inventaire du ' + dateTxt + '</div>' + vueRecap(true).replace(/<div class="fournisseur-titre">.*?<\/div>/, '') + '</div>';
+  document.getElementById('impression').innerHTML = h;
+  window.print();
+}
+document.getElementById('imprimer').onclick = imprimer;
+rendre();
+if (API_URL && !codeAcces()) info('Code d\'accès manquant : ouvre l\'appli avec le lien complet que je t\'ai donné.', false);
+serveur('lireDonnees').catch(() => {});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+</body>
+</html>
