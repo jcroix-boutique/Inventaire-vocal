@@ -149,7 +149,9 @@ let enCours = 0, derniereErreur = false;
 function serveur(fn, ...args) {
   enCours++; majStatut();
   return new Promise((ok, ko) => {
-    if (API_URL && codeAcces()) {
+    if (API_URL && location.protocol !== 'file:' && !codeAcces()) {
+      ko(new Error('code d\'accès manquant. Ouvre l\'appli une fois avec le lien complet (…#code=…)'));
+    } else if (API_URL && codeAcces()) {
       fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ code: codeAcces(), action: fn, args: args }) })
         .then(r => r.json())
         .then(r => r.ok ? ok(r.data) : ko(new Error(r.erreur)))
